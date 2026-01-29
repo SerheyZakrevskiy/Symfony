@@ -56,22 +56,16 @@ class MessageController extends AbstractController
     }
 
     #[Route('', name: 'message_list', methods: ['GET'])]
-    public function list(): JsonResponse
+    public function getCollection(Request $request, MessageRepository $repo): JsonResponse
     {
-        $messages = $this->messageRepository->findAll();
+        $q = $request->query->all();
 
-        $result = [];
-        foreach ($messages as $msg) {
-            $result[] = [
-                'id' => $msg->getId(),
-                'sender' => $msg->getSender()->getId(),
-                'receiver' => $msg->getReceiver()->getId(),
-                'content' => $msg->getContent(),
-                'createdAt' => $msg->getCreatedAt()->format('Y-m-d H:i:s'),
-            ];
-        }
+        $itemsPerPage = isset($q['itemsPerPage']) ? (int) $q['itemsPerPage'] : 10;
+        $page = isset($q['page']) ? (int) $q['page'] : 1;
 
-        return new JsonResponse($result, Response::HTTP_OK);
+        $data = $repo->getAllMessagesByFilter($q, $itemsPerPage, $page);
+
+        return new JsonResponse($data, Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'message_get', methods: ['GET'])]

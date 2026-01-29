@@ -27,9 +27,16 @@ class FriendRequestController extends AbstractController
     ) {}
 
     #[Route('/', methods: ['GET'])]
-    public function index(FriendRequestRepository $repo): JsonResponse
+    public function getCollection(Request $request, FriendRequestRepository $repo): JsonResponse
     {
-        return $this->json($repo->findAll(), Response::HTTP_OK);
+        $q = $request->query->all();
+
+        $itemsPerPage = isset($q['itemsPerPage']) ? (int) $q['itemsPerPage'] : 10;
+        $page = isset($q['page']) ? (int) $q['page'] : 1;
+
+        $data = $repo->getAllFriendRequestsByFilter($q, $itemsPerPage, $page);
+
+        return new JsonResponse($data, Response::HTTP_OK);
     }
 
     #[Route('/', methods: ['POST'])]

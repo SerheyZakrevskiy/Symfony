@@ -27,9 +27,16 @@ class StoryController extends AbstractController
     ) {}
 
     #[Route('/', methods: ['GET'])]
-    public function index(StoryRepository $repo): JsonResponse
+    public function getCollection(Request $request, StoryRepository $repo): JsonResponse
     {
-        return $this->json($repo->findAll(), Response::HTTP_OK);
+        $q = $request->query->all();
+
+        $itemsPerPage = isset($q['itemsPerPage']) ? (int) $q['itemsPerPage'] : 10;
+        $page = isset($q['page']) ? (int) $q['page'] : 1;
+
+        $data = $repo->getAllStoriesByFilter($q, $itemsPerPage, $page);
+
+        return new JsonResponse($data, Response::HTTP_OK);
     }
 
     #[Route('/', methods: ['POST'])]
@@ -44,7 +51,9 @@ class StoryController extends AbstractController
             return new JsonResponse(['error' => 'Author not found'], Response::HTTP_NOT_FOUND);
         }
 
-        $caption = array_key_exists('caption', $data) ? ($data['caption'] === null ? null : (string) $data['caption']) : null;
+        $caption = array_key_exists('caption', $data)
+            ? ($data['caption'] === null ? null : (string) $data['caption'])
+            : null;
 
         $expiresAt = null;
         if (array_key_exists('expiresAt', $data) && is_string($data['expiresAt']) && $data['expiresAt'] !== '') {
