@@ -3,7 +3,7 @@
 namespace App\Service\User;
 
 use App\Entity\User;
-use App\Services\RequestCheckerService;
+use App\Service\RequestCheckerService;
 use Doctrine\ORM\EntityManagerInterface;
 
 class UserService

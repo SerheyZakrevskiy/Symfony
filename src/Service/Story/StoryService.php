@@ -4,7 +4,7 @@ namespace App\Service\Story;
 
 use App\Entity\Story;
 use App\Entity\User;
-use App\Services\RequestCheckerService;
+use App\Service\RequestCheckerService;
 use Doctrine\ORM\EntityManagerInterface;
 
 class StoryService
