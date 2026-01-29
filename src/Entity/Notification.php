@@ -5,10 +5,17 @@ namespace App\Entity;
 use App\Repository\NotificationRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: NotificationRepository::class)]
 class Notification
 {
+    public const TYPE_LIKE = 'like';
+    public const TYPE_COMMENT = 'comment';
+    public const TYPE_FOLLOW = 'follow';
+    public const TYPE_MESSAGE = 'message';
+    public const TYPE_FRIEND_REQUEST = 'friend_request';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
@@ -16,38 +23,57 @@ class Notification
 
     #[ORM\ManyToOne(inversedBy: 'notifications')]
     #[ORM\JoinColumn(nullable: false)]
-    private ?User $recipient = null;
+    #[Assert\NotNull]
+    private User $recipient;
 
     #[ORM\Column(length: 255)]
-    private ?string $type = null;
+    #[Assert\NotBlank]
+    #[Assert\Choice(choices: [
+        self::TYPE_LIKE,
+        self::TYPE_COMMENT,
+        self::TYPE_FOLLOW,
+        self::TYPE_MESSAGE,
+        self::TYPE_FRIEND_REQUEST,
+    ])]
+    private string $type;
 
     #[ORM\Column(type: Types::TEXT)]
-    private ?string $message = null;
+    #[Assert\NotBlank]
+    #[Assert\Length(
+        min: 1,
+        max: 3000,
+        minMessage: 'Notification message cannot be empty',
+        maxMessage: 'Notification message cannot be longer than {{ limit }} characters'
+    )]
+    private string $message;
 
     #[ORM\Column]
-    private ?bool $isRead = null;
+    #[Assert\NotNull]
+    #[Assert\Type('bool')]
+    private bool $isRead = false;
 
     #[ORM\Column]
-    private ?\DateTimeImmutable $createdAt = null;
+    #[Assert\NotNull]
+    #[Assert\Type(\DateTimeImmutable::class)]
+    private \DateTimeImmutable $createdAt;
 
     public function getId(): ?int
     {
         return $this->id;
     }
 
-    public function getRecipient(): ?User
+    public function getRecipient(): User
     {
         return $this->recipient;
     }
 
-    public function setRecipient(?User $recipient): static
+    public function setRecipient(User $recipient): static
     {
         $this->recipient = $recipient;
-
         return $this;
     }
 
-    public function getType(): ?string
+    public function getType(): string
     {
         return $this->type;
     }
@@ -55,11 +81,10 @@ class Notification
     public function setType(string $type): static
     {
         $this->type = $type;
-
         return $this;
     }
 
-    public function getMessage(): ?string
+    public function getMessage(): string
     {
         return $this->message;
     }
@@ -67,11 +92,10 @@ class Notification
     public function setMessage(string $message): static
     {
         $this->message = $message;
-
         return $this;
     }
 
-    public function isRead(): ?bool
+    public function isRead(): bool
     {
         return $this->isRead;
     }
@@ -79,11 +103,10 @@ class Notification
     public function setIsRead(bool $isRead): static
     {
         $this->isRead = $isRead;
-
         return $this;
     }
 
-    public function getCreatedAt(): ?\DateTimeImmutable
+    public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
     }
@@ -91,7 +114,6 @@ class Notification
     public function setCreatedAt(\DateTimeImmutable $createdAt): static
     {
         $this->createdAt = $createdAt;
-
         return $this;
     }
 }

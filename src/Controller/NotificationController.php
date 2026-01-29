@@ -4,64 +4,85 @@ namespace App\Controller;
 
 use App\Entity\Notification;
 use App\Repository\NotificationRepository;
-use App\Service\SocialService;
+use App\Repository\UserRepository;
+use App\Service\Notification\NotificationService;
+use App\Service\RequestCheckerService;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
 
-#[Route('/notification')]
+#[Route('/api/notification')]
 class NotificationController extends AbstractController
 {
+    private const REQUIRED_FIELDS_FOR_CREATE_NOTIFICATION = ['recipientId', 'type', 'message'];
+
+    public function __construct(
+        private readonly EntityManagerInterface $entityManager,
+        private readonly NotificationService $notificationService,
+        private readonly RequestCheckerService $requestCheckerService,
+        private readonly UserRepository $userRepository
+    ) {}
+
     #[Route('/', methods: ['GET'])]
     public function index(NotificationRepository $repo): JsonResponse
     {
-        return $this->json($repo->findAll());
+        return $this->json($repo->findAll(), Response::HTTP_OK);
     }
 
     #[Route('/', methods: ['POST'])]
-    public function create(Request $request, SocialService $service): JsonResponse
+    public function create(Request $request): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
 
-        $notification = $service->createNotification($data);
+        $this->requestCheckerService->check($data, self::REQUIRED_FIELDS_FOR_CREATE_NOTIFICATION);
 
-        return $this->json($notification, 201);
+        $recipient = $this->userRepository->find($data['recipientId']);
+        if (!$recipient) {
+            return new JsonResponse(['error' => 'Recipient not found'], Response::HTTP_NOT_FOUND);
+        }
+
+        $isRead = array_key_exists('isRead', $data) ? (bool) $data['isRead'] : false;
+
+        $notification = $this->notificationService->createNotification(
+            $recipient,
+            (string) $data['type'],
+            (string) $data['message'],
+            $isRead
+        );
+
+        $this->entityManager->flush();
+
+        return $this->json($notification, Response::HTTP_CREATED);
     }
 
     #[Route('/{id}', methods: ['GET'])]
     public function show(Notification $notification): JsonResponse
     {
-        return $this->json($notification);
+        return $this->json($notification, Response::HTTP_OK);
     }
 
     #[Route('/{id}', methods: ['PATCH', 'PUT'])]
-    public function update(Request $request, Notification $notification, NotificationRepository $repo): JsonResponse
+    public function update(Request $request, Notification $notification): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
 
-        if (isset($data['type'])) {
-            $notification->setType($data['type']);
-        }
+        $this->notificationService->updateNotification($notification, $data);
 
-        if (isset($data['message'])) {
-            $notification->setMessage($data['message']);
-        }
+        $this->entityManager->flush();
 
-        if (isset($data['is_read'])) {
-            $notification->setIsRead($data['is_read']);
-        }
-
-        $repo->save($notification, true);
-
-        return $this->json($notification);
+        return $this->json($notification, Response::HTTP_OK);
     }
 
     #[Route('/{id}', methods: ['DELETE'])]
-    public function delete(Notification $notification, NotificationRepository $repo): JsonResponse
+    public function delete(Notification $notification): JsonResponse
     {
-        $repo->remove($notification, true);
+        $this->notificationService->removeNotification($notification);
 
-        return $this->json(['status' => 'deleted']);
+        $this->entityManager->flush();
+
+        return $this->json(['status' => 'deleted'], Response::HTTP_OK);
     }
 }

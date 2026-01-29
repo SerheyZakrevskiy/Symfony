@@ -3,20 +3,28 @@
 namespace App\Controller;
 
 use App\Entity\Message;
-use App\Entity\User;
-use App\Service\SocialService;
+use App\Repository\MessageRepository;
+use App\Repository\UserRepository;
+use App\Service\Message\MessageService;
+use App\Service\RequestCheckerService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
 
 #[Route('/api/message')]
 class MessageController extends AbstractController
 {
+    private const REQUIRED_FIELDS_FOR_CREATE_MESSAGE = ['senderId', 'receiverId', 'content'];
+
     public function __construct(
-        private EntityManagerInterface $em,
-        private SocialService $socialService
+        private readonly EntityManagerInterface $entityManager,
+        private readonly MessageService $messageService,
+        private readonly RequestCheckerService $requestCheckerService,
+        private readonly UserRepository $userRepository,
+        private readonly MessageRepository $messageRepository
     ) {}
 
     #[Route('', name: 'message_create', methods: ['POST'])]
@@ -24,33 +32,33 @@ class MessageController extends AbstractController
     {
         $data = json_decode($request->getContent(), true);
 
-        $message = new Message();
+        $this->requestCheckerService->check($data, self::REQUIRED_FIELDS_FOR_CREATE_MESSAGE);
 
-        $sender = $this->em->getRepository(User::class)->find($data['sender_id']);
+        $sender = $this->userRepository->find($data['senderId']);
         if (!$sender) {
-            return new JsonResponse(['error' => 'Sender not found'], 404);
+            return new JsonResponse(['error' => 'Sender not found'], Response::HTTP_NOT_FOUND);
         }
-        $message->setSender($sender);
 
-        $receiver = $this->em->getRepository(User::class)->find($data['receiver_id']);
+        $receiver = $this->userRepository->find($data['receiverId']);
         if (!$receiver) {
-            return new JsonResponse(['error' => 'Receiver not found'], 404);
+            return new JsonResponse(['error' => 'Receiver not found'], Response::HTTP_NOT_FOUND);
         }
-        $message->setReceiver($receiver);
 
-        $message->setContent($data['content']);
-        $message->setCreatedAt(new \DateTimeImmutable());
+        $message = $this->messageService->createMessage(
+            $sender,
+            $receiver,
+            (string) $data['content']
+        );
 
-        $this->em->persist($message);
-        $this->em->flush();
+        $this->entityManager->flush();
 
-        return new JsonResponse(['id' => $message->getId()], 201);
+        return new JsonResponse(['id' => $message->getId()], Response::HTTP_CREATED);
     }
 
     #[Route('', name: 'message_list', methods: ['GET'])]
     public function list(): JsonResponse
     {
-        $messages = $this->em->getRepository(Message::class)->findAll();
+        $messages = $this->messageRepository->findAll();
 
         $result = [];
         foreach ($messages as $msg) {
@@ -63,16 +71,16 @@ class MessageController extends AbstractController
             ];
         }
 
-        return new JsonResponse($result);
+        return new JsonResponse($result, Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'message_get', methods: ['GET'])]
     public function getOne(int $id): JsonResponse
     {
-        $msg = $this->em->getRepository(Message::class)->find($id);
+        $msg = $this->messageRepository->find($id);
 
         if (!$msg) {
-            return new JsonResponse(['error' => 'Message not found'], 404);
+            return new JsonResponse(['error' => 'Message not found'], Response::HTTP_NOT_FOUND);
         }
 
         return new JsonResponse([
@@ -81,39 +89,38 @@ class MessageController extends AbstractController
             'receiver' => $msg->getReceiver()->getId(),
             'content' => $msg->getContent(),
             'createdAt' => $msg->getCreatedAt()->format('Y-m-d H:i:s'),
-        ]);
+        ], Response::HTTP_OK);
     }
 
-    #[Route('/{id}', name: 'message_update', methods: ['PUT'])]
+    #[Route('/{id}', name: 'message_update', methods: ['PUT', 'PATCH'])]
     public function update(Request $request, int $id): JsonResponse
     {
-        $msg = $this->em->getRepository(Message::class)->find($id);
+        $msg = $this->messageRepository->find($id);
         if (!$msg) {
-            return new JsonResponse(['error' => 'Message not found'], 404);
+            return new JsonResponse(['error' => 'Message not found'], Response::HTTP_NOT_FOUND);
         }
 
         $data = json_decode($request->getContent(), true);
 
-        if (isset($data['content'])) {
-            $msg->setContent($data['content']);
-        }
+        $this->messageService->updateMessage($msg, $data);
 
-        $this->em->flush();
+        $this->entityManager->flush();
 
-        return new JsonResponse(['status' => 'updated']);
+        return new JsonResponse(['status' => 'updated'], Response::HTTP_OK);
     }
 
     #[Route('/{id}', name: 'message_delete', methods: ['DELETE'])]
     public function delete(int $id): JsonResponse
     {
-        $msg = $this->em->getRepository(Message::class)->find($id);
+        $msg = $this->messageRepository->find($id);
         if (!$msg) {
-            return new JsonResponse(['error' => 'Message not found'], 404);
+            return new JsonResponse(['error' => 'Message not found'], Response::HTTP_NOT_FOUND);
         }
 
-        $this->em->remove($msg);
-        $this->em->flush();
+        $this->messageService->removeMessage($msg);
 
-        return new JsonResponse(['status' => 'deleted']);
+        $this->entityManager->flush();
+
+        return new JsonResponse(['status' => 'deleted'], Response::HTTP_OK);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Entity;
 
 use App\Repository\StoryRepository;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: StoryRepository::class)]
 class Story
@@ -15,38 +16,46 @@ class Story
 
     #[ORM\ManyToOne]
     #[ORM\JoinColumn(nullable: false)]
-    private ?User $author = null;
+    #[Assert\NotNull]
+    private User $author;
 
     #[ORM\Column(length: 255)]
-    private ?string $mediaUrl = null;
+    #[Assert\NotBlank]
+    #[Assert\Length(max: 255)]
+    #[Assert\Url]
+    private string $mediaUrl;
 
     #[ORM\Column(length: 255, nullable: true)]
+    #[Assert\Length(max: 255)]
     private ?string $caption = null;
 
     #[ORM\Column]
-    private ?\DateTimeImmutable $createdAt = null;
+    #[Assert\NotNull]
+    #[Assert\Type(\DateTimeImmutable::class)]
+    private \DateTimeImmutable $createdAt;
 
     #[ORM\Column]
-    private ?\DateTimeImmutable $expiresAt = null;
+    #[Assert\NotNull]
+    #[Assert\Type(\DateTimeImmutable::class)]
+    private \DateTimeImmutable $expiresAt;
 
     public function getId(): ?int
     {
         return $this->id;
     }
 
-    public function getAuthor(): ?User
+    public function getAuthor(): User
     {
         return $this->author;
     }
 
-    public function setAuthor(?User $author): static
+    public function setAuthor(User $author): static
     {
         $this->author = $author;
-
         return $this;
     }
 
-    public function getMediaUrl(): ?string
+    public function getMediaUrl(): string
     {
         return $this->mediaUrl;
     }
@@ -54,7 +63,6 @@ class Story
     public function setMediaUrl(string $mediaUrl): static
     {
         $this->mediaUrl = $mediaUrl;
-
         return $this;
     }
 
@@ -66,11 +74,10 @@ class Story
     public function setCaption(?string $caption): static
     {
         $this->caption = $caption;
-
         return $this;
     }
 
-    public function getCreatedAt(): ?\DateTimeImmutable
+    public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
     }
@@ -78,11 +85,10 @@ class Story
     public function setCreatedAt(\DateTimeImmutable $createdAt): static
     {
         $this->createdAt = $createdAt;
-
         return $this;
     }
 
-    public function getExpiresAt(): ?\DateTimeImmutable
+    public function getExpiresAt(): \DateTimeImmutable
     {
         return $this->expiresAt;
     }
@@ -90,7 +96,17 @@ class Story
     public function setExpiresAt(\DateTimeImmutable $expiresAt): static
     {
         $this->expiresAt = $expiresAt;
-
         return $this;
+    }
+
+    #[Assert\Callback]
+    public function validateExpiration(Assert\ExecutionContextInterface $context): void
+    {
+        if ($this->expiresAt <= $this->createdAt) {
+            $context
+                ->buildViolation('Story expiration date must be later than creation date')
+                ->atPath('expiresAt')
+                ->addViolation();
+        }
     }
 }

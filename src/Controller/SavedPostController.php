@@ -3,43 +3,74 @@
 namespace App\Controller;
 
 use App\Entity\SavedPost;
+use App\Repository\PostRepository;
 use App\Repository\SavedPostRepository;
-use App\Service\SocialService;
+use App\Repository\UserRepository;
+use App\Service\RequestCheckerService;
+use App\Service\SavedPost\SavedPostService;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
 
-#[Route('/saved-post')]
+#[Route('/api/saved-post')]
 class SavedPostController extends AbstractController
 {
+    private const REQUIRED_FIELDS_FOR_CREATE_SAVED_POST = ['authorId', 'postId'];
+
+    public function __construct(
+        private readonly EntityManagerInterface $entityManager,
+        private readonly SavedPostService $savedPostService,
+        private readonly RequestCheckerService $requestCheckerService,
+        private readonly UserRepository $userRepository,
+        private readonly PostRepository $postRepository
+    ) {}
+
     #[Route('/', methods: ['GET'])]
     public function index(SavedPostRepository $repo): JsonResponse
     {
-        return $this->json($repo->findAll());
+        return $this->json($repo->findAll(), Response::HTTP_OK);
     }
 
     #[Route('/', methods: ['POST'])]
-    public function create(Request $request, SocialService $service): JsonResponse
+    public function create(Request $request): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
 
-        $saved = $service->createSavedPost($data);
+        $this->requestCheckerService->check($data, self::REQUIRED_FIELDS_FOR_CREATE_SAVED_POST);
 
-        return $this->json($saved, 201);
+        $author = $this->userRepository->find($data['authorId']);
+        if (!$author) {
+            return new JsonResponse(['error' => 'Author not found'], Response::HTTP_NOT_FOUND);
+        }
+
+        $post = $this->postRepository->find($data['postId']);
+        if (!$post) {
+            return new JsonResponse(['error' => 'Post not found'], Response::HTTP_NOT_FOUND);
+        }
+
+        $saved = $this->savedPostService->createSavedPost($author, $post);
+
+        $this->entityManager->flush();
+
+        return $this->json($saved, Response::HTTP_CREATED);
     }
 
     #[Route('/{id}', methods: ['GET'])]
     public function show(SavedPost $saved): JsonResponse
     {
-        return $this->json($saved);
+        return $this->json($saved, Response::HTTP_OK);
     }
 
     #[Route('/{id}', methods: ['DELETE'])]
-    public function delete(SavedPost $saved, SavedPostRepository $repo): JsonResponse
+    public function delete(SavedPost $saved): JsonResponse
     {
-        $repo->remove($saved, true);
+        $this->savedPostService->removeSavedPost($saved);
 
-        return $this->json(['status' => 'deleted']);
+        $this->entityManager->flush();
+
+        return $this->json(['status' => 'deleted'], Response::HTTP_OK);
     }
 }

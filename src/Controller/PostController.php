@@ -4,60 +4,82 @@ namespace App\Controller;
 
 use App\Entity\Post;
 use App\Repository\PostRepository;
-use App\Service\SocialService;
+use App\Repository\UserRepository;
+use App\Service\Post\PostService;
+use App\Service\RequestCheckerService;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\Attribute\Route;
 
-#[Route('/post')]
+#[Route('/api/post')]
 class PostController extends AbstractController
 {
+    private const REQUIRED_FIELDS_FOR_CREATE_POST = ['title', 'content', 'authorId'];
+
+    public function __construct(
+        private readonly EntityManagerInterface $entityManager,
+        private readonly PostService $postService,
+        private readonly RequestCheckerService $requestCheckerService,
+        private readonly UserRepository $userRepository
+    ) {}
+
     #[Route('/', methods: ['GET'])]
     public function index(PostRepository $repo): JsonResponse
     {
-        return $this->json($repo->findAll());
+        return $this->json($repo->findAll(), Response::HTTP_OK);
     }
 
     #[Route('/', methods: ['POST'])]
-    public function create(Request $request, SocialService $service): JsonResponse
+    public function create(Request $request): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
 
-        $post = $service->createPost($data);
+        $this->requestCheckerService->check($data, self::REQUIRED_FIELDS_FOR_CREATE_POST);
 
-        return $this->json($post, 201);
+        $author = $this->userRepository->find($data['authorId']);
+        if (!$author) {
+            return new JsonResponse(['error' => 'Author not found'], Response::HTTP_NOT_FOUND);
+        }
+
+        $post = $this->postService->createPost(
+            (string) $data['title'],
+            (string) $data['content'],
+            $author
+        );
+
+        $this->entityManager->flush();
+
+        return $this->json($post, Response::HTTP_CREATED);
     }
 
     #[Route('/{id}', methods: ['GET'])]
     public function show(Post $post): JsonResponse
     {
-        return $this->json($post);
+        return $this->json($post, Response::HTTP_OK);
     }
 
     #[Route('/{id}', methods: ['PUT', 'PATCH'])]
-    public function update(Request $request, Post $post, PostRepository $repo): JsonResponse
+    public function update(Request $request, Post $post): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
 
-        if (isset($data['title'])) {
-            $post->setTitle($data['title']);
-        }
+        $this->postService->updatePost($post, $data);
 
-        if (isset($data['content'])) {
-            $post->setContent($data['content']);
-        }
+        $this->entityManager->flush();
 
-        $repo->save($post, true);
-
-        return $this->json($post);
+        return $this->json($post, Response::HTTP_OK);
     }
 
     #[Route('/{id}', methods: ['DELETE'])]
-    public function delete(Post $post, PostRepository $repo): JsonResponse
+    public function delete(Post $post): JsonResponse
     {
-        $repo->remove($post, true);
+        $this->postService->removePost($post);
 
-        return $this->json(['status' => 'deleted']);
+        $this->entityManager->flush();
+
+        return $this->json(['status' => 'deleted'], Response::HTTP_OK);
     }
 }
