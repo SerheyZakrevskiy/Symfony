@@ -1,58 +1,128 @@
 <?php
 
-namespace App\Service\Post;
+namespace App\Entity;
 
-use App\Entity\Post;
-use App\Entity\User;
-use App\Service\RequestCheckerService;
-use Doctrine\ORM\EntityManagerInterface;
+use ApiPlatform\Doctrine\Orm\Filter\DateFilter;
+use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
+use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post as ApiPost;
+use ApiPlatform\Metadata\Put;
+use App\Repository\PostRepository;
+use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Serializer\Annotation\Groups;
 
-class PostService
+#[ORM\Entity(repositoryClass: PostRepository::class)]
+#[ORM\Table(name: 'post')]
+#[ApiResource(
+    operations: [
+        new Get(normalizationContext: ['groups' => ['post:read']]),
+        new GetCollection(normalizationContext: ['groups' => ['post:read']]),
+        new ApiPost(
+            denormalizationContext: ['groups' => ['post:write']],
+            normalizationContext: ['groups' => ['post:read']]
+        ),
+        new Put(
+            denormalizationContext: ['groups' => ['post:write']],
+            normalizationContext: ['groups' => ['post:read']]
+        ),
+        new Patch(
+            denormalizationContext: ['groups' => ['post:write']],
+            normalizationContext: ['groups' => ['post:read']]
+        ),
+        new Delete(),
+    ],
+    paginationEnabled: true,
+    paginationItemsPerPage: 10
+)]
+#[ApiFilter(SearchFilter::class, properties: [
+    'title' => 'partial',
+    'content' => 'partial',
+    'author' => 'exact',
+])]
+#[ApiFilter(DateFilter::class, properties: ['createdAt'])]
+#[ApiFilter(OrderFilter::class, properties: ['id', 'createdAt'], arguments: ['orderParameterName' => 'order'])]
+class Post
 {
-    public function __construct(
-        private readonly EntityManagerInterface $entityManager,
-        private readonly RequestCheckerService $requestCheckerService
-    ) {}
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    #[Groups(['post:read'])]
+    private ?int $id = null;
 
-    public function createPost(
-        string $title,
-        string $content,
-        User $author,
-        ?\DateTimeImmutable $createdAt = null
-    ): Post {
-        $post = (new Post())
-            ->setTitle($title)
-            ->setContent($content)
-            ->setAuthor($author)
-            ->setCreatedAt($createdAt ?? new \DateTimeImmutable());
+    #[ORM\Column(length: 255)]
+    #[Groups(['post:read', 'post:write'])]
+    private string $title = '';
 
-        $this->requestCheckerService->validateRequestDataByConstraints($post);
+    #[ORM\Column(type: 'text')]
+    #[Groups(['post:read', 'post:write'])]
+    private string $content = '';
 
-        $this->entityManager->persist($post);
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
+    #[Groups(['post:read', 'post:write'])]
+    private ?User $author = null;
 
-        return $post;
+    #[ORM\Column]
+    #[Groups(['post:read'])]
+    private \DateTimeImmutable $createdAt;
+
+    public function __construct()
+    {
+        $this->createdAt = new \DateTimeImmutable();
     }
 
-    public function updatePost(Post $post, array $data): void
+    public function getId(): ?int
     {
-        if (array_key_exists('title', $data)) {
-            $post->setTitle((string) $data['title']);
-        }
-
-        if (array_key_exists('content', $data)) {
-            $post->setContent((string) $data['content']);
-        }
-
-        $this->requestCheckerService->validateRequestDataByConstraints($post);
+        return $this->id;
     }
 
-    public function removePost(Post $post): void
+    public function getTitle(): string
     {
-        $this->entityManager->remove($post);
+        return $this->title;
     }
 
-    public function flush(): void
+    public function setTitle(string $title): self
     {
-        $this->entityManager->flush();
+        $this->title = $title;
+        return $this;
+    }
+
+    public function getContent(): string
+    {
+        return $this->content;
+    }
+
+    public function setContent(string $content): self
+    {
+        $this->content = $content;
+        return $this;
+    }
+
+    public function getAuthor(): ?User
+    {
+        return $this->author;
+    }
+
+    public function setAuthor(?User $author): self
+    {
+        $this->author = $author;
+        return $this;
+    }
+
+    public function getCreatedAt(): \DateTimeImmutable
+    {
+        return $this->createdAt;
+    }
+
+    public function setCreatedAt(\DateTimeImmutable $createdAt): self
+    {
+        $this->createdAt = $createdAt;
+        return $this;
     }
 }
