@@ -2,19 +2,49 @@
 
 namespace App\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post as ApiPost;
+use ApiPlatform\Metadata\Put;
 use App\Repository\PostRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
-use Doctrine\ORM\Mapping as ORM;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: PostRepository::class)]
+#[ApiResource(
+    operations: [
+        new Get(normalizationContext: ['groups' => ['post:read']]),
+        new GetCollection(normalizationContext: ['groups' => ['post:read']]),
+        new ApiPost(
+            denormalizationContext: ['groups' => ['post:write']],
+            normalizationContext: ['groups' => ['post:read']]
+        ),
+        new Put(
+            denormalizationContext: ['groups' => ['post:write']],
+            normalizationContext: ['groups' => ['post:read']]
+        ),
+        new Patch(
+            denormalizationContext: ['groups' => ['post:write']],
+            normalizationContext: ['groups' => ['post:read']]
+        ),
+        new Delete(),
+    ],
+    paginationEnabled: true,
+    paginationItemsPerPage: 10
+)]
 class Post
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
+    #[Groups(['post:read'])]
     private ?int $id = null;
 
     #[ORM\Column(length: 255)]
@@ -25,7 +55,8 @@ class Post
         minMessage: 'Post title cannot be empty',
         maxMessage: 'Post title cannot exceed {{ limit }} characters'
     )]
-    private string $title;
+    #[Groups(['post:read', 'post:write'])]
+    private string $title = '';
 
     #[ORM\Column(type: Types::TEXT)]
     #[Assert\NotBlank]
@@ -35,17 +66,20 @@ class Post
         minMessage: 'Post content cannot be empty',
         maxMessage: 'Post content cannot exceed {{ limit }} characters'
     )]
-    private string $content;
+    #[Groups(['post:read', 'post:write'])]
+    private string $content = '';
 
     #[ORM\Column]
     #[Assert\NotNull]
     #[Assert\Type(\DateTimeImmutable::class)]
+    #[Groups(['post:read'])]
     private \DateTimeImmutable $createdAt;
 
     #[ORM\ManyToOne(inversedBy: 'posts')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     #[Assert\NotNull]
-    private User $author;
+    #[Groups(['post:read', 'post:write'])]
+    private ?User $author = null;
 
     /**
      * @var Collection<int, Comment>
@@ -55,6 +89,7 @@ class Post
         mappedBy: 'post',
         orphanRemoval: true
     )]
+    #[Groups(['post:read'])]
     private Collection $comments;
 
     /**
@@ -65,12 +100,14 @@ class Post
         mappedBy: 'post',
         orphanRemoval: true
     )]
+    #[Groups(['post:read'])]
     private Collection $likes;
 
     public function __construct()
     {
         $this->comments = new ArrayCollection();
         $this->likes = new ArrayCollection();
+        $this->createdAt = new \DateTimeImmutable();
     }
 
     public function getId(): ?int
@@ -111,12 +148,12 @@ class Post
         return $this;
     }
 
-    public function getAuthor(): User
+    public function getAuthor(): ?User
     {
         return $this->author;
     }
 
-    public function setAuthor(User $author): static
+    public function setAuthor(?User $author): static
     {
         $this->author = $author;
         return $this;

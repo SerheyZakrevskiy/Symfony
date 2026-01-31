@@ -48,7 +48,6 @@ class RequestCheckerService
     }
 
     /**
-     * Валідовує дані по Symfony Constraints
      *
      * @param array|object $data
      * @param array|null $constraints

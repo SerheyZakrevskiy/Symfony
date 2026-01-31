@@ -2,17 +2,70 @@
 
 namespace App\Entity;
 
+use ApiPlatform\Doctrine\Orm\Filter\DateFilter;
+use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
+use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post as ApiPost;
+use ApiPlatform\Metadata\Put;
 use App\Repository\CommentRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: CommentRepository::class)]
+#[ORM\Table(name: 'comment')]
+#[ApiResource(
+    operations: [
+        new Get(
+            uriTemplate: '/comment/{id}',
+            normalizationContext: ['groups' => ['comment:read']]
+        ),
+        new GetCollection(
+            uriTemplate: '/comment',
+            normalizationContext: ['groups' => ['comment:read']]
+        ),
+        new ApiPost(
+            uriTemplate: '/comment',
+            denormalizationContext: ['groups' => ['comment:write']],
+            normalizationContext: ['groups' => ['comment:read']]
+        ),
+        new Put(
+            uriTemplate: '/comment/{id}',
+            denormalizationContext: ['groups' => ['comment:write']],
+            normalizationContext: ['groups' => ['comment:read']]
+        ),
+        new Patch(
+            uriTemplate: '/comment/{id}',
+            denormalizationContext: ['groups' => ['comment:write']],
+            normalizationContext: ['groups' => ['comment:read']]
+        ),
+        new Delete(
+            uriTemplate: '/comment/{id}'
+        ),
+    ],
+    paginationEnabled: true,
+    paginationItemsPerPage: 10
+)]
+#[ApiFilter(SearchFilter::class, properties: [
+    'content' => 'partial',
+    'author' => 'exact',
+    'post' => 'exact',
+])]
+#[ApiFilter(DateFilter::class, properties: ['createdAt'])]
+#[ApiFilter(OrderFilter::class, properties: ['id', 'createdAt'], arguments: ['orderParameterName' => 'order'])]
 class Comment
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
+    #[Groups(['comment:read'])]
     private ?int $id = null;
 
     #[ORM\Column(type: Types::TEXT)]
@@ -23,22 +76,31 @@ class Comment
         minMessage: 'Comment must contain at least {{ limit }} character',
         maxMessage: 'Comment cannot be longer than {{ limit }} characters'
     )]
-    private string $content;
+    #[Groups(['comment:read', 'comment:write'])]
+    private string $content = '';
 
     #[ORM\Column]
     #[Assert\NotNull]
     #[Assert\Type(\DateTimeImmutable::class)]
+    #[Groups(['comment:read'])]
     private \DateTimeImmutable $createdAt;
 
     #[ORM\ManyToOne(inversedBy: 'comments')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     #[Assert\NotNull]
-    private User $author;
+    #[Groups(['comment:read', 'comment:write'])]
+    private ?User $author = null;
 
     #[ORM\ManyToOne(inversedBy: 'comments')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
     #[Assert\NotNull]
-    private Post $post;
+    #[Groups(['comment:read', 'comment:write'])]
+    private ?Post $post = null;
+
+    public function __construct()
+    {
+        $this->createdAt = new \DateTimeImmutable();
+    }
 
     public function getId(): ?int
     {
@@ -67,23 +129,23 @@ class Comment
         return $this;
     }
 
-    public function getAuthor(): User
+    public function getAuthor(): ?User
     {
         return $this->author;
     }
 
-    public function setAuthor(User $author): static
+    public function setAuthor(?User $author): static
     {
         $this->author = $author;
         return $this;
     }
 
-    public function getPost(): Post
+    public function getPost(): ?Post
     {
         return $this->post;
     }
 
-    public function setPost(Post $post): static
+    public function setPost(?Post $post): static
     {
         $this->post = $post;
         return $this;

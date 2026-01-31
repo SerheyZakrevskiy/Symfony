@@ -23,32 +23,37 @@ class NotificationController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly NotificationService $notificationService,
         private readonly RequestCheckerService $requestCheckerService,
-        private readonly UserRepository $userRepository
+        private readonly UserRepository $userRepository,
+        private readonly NotificationRepository $notificationRepository,
     ) {}
 
-    #[Route('/', methods: ['GET'])]
-    public function getCollection(Request $request, NotificationRepository $repo): JsonResponse
+    #[Route('', methods: ['GET'])]
+    public function getCollection(Request $request): JsonResponse
     {
         $q = $request->query->all();
 
-        $itemsPerPage = isset($q['itemsPerPage']) ? (int) $q['itemsPerPage'] : 10;
-        $page = isset($q['page']) ? (int) $q['page'] : 1;
+        $itemsPerPage = isset($q['itemsPerPage']) ? max(1, (int) $q['itemsPerPage']) : 10;
+        $page = isset($q['page']) ? max(1, (int) $q['page']) : 1;
 
-        $data = $repo->getAllNotificationsByFilter($q, $itemsPerPage, $page);
+        $data = $this->notificationRepository->getAllNotificationsByFilter($q, $itemsPerPage, $page);
 
         return new JsonResponse($data, Response::HTTP_OK);
     }
 
-    #[Route('/', methods: ['POST'])]
+    #[Route('', methods: ['POST'])]
     public function create(Request $request): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $data = $this->safeJson($request);
+        if ($data instanceof JsonResponse) {
+            return $data;
+        }
 
         $this->requestCheckerService->check($data, self::REQUIRED_FIELDS_FOR_CREATE_NOTIFICATION);
 
-        $recipient = $this->userRepository->find($data['recipientId']);
+        $recipientId = (int) $data['recipientId'];
+        $recipient = $this->userRepository->find($recipientId);
         if (!$recipient) {
-            return new JsonResponse(['error' => 'Recipient not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Recipient not found'], Response::HTTP_NOT_FOUND);
         }
 
         $isRead = array_key_exists('isRead', $data) ? (bool) $data['isRead'] : false;
@@ -65,16 +70,19 @@ class NotificationController extends AbstractController
         return $this->json($notification, Response::HTTP_CREATED);
     }
 
-    #[Route('/{id}', methods: ['GET'])]
+    #[Route('/{id<\d+>}', methods: ['GET'])]
     public function show(Notification $notification): JsonResponse
     {
         return $this->json($notification, Response::HTTP_OK);
     }
 
-    #[Route('/{id}', methods: ['PATCH', 'PUT'])]
+    #[Route('/{id<\d+>}', methods: ['PUT', 'PATCH'])]
     public function update(Request $request, Notification $notification): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $data = $this->safeJson($request);
+        if ($data instanceof JsonResponse) {
+            return $data;
+        }
 
         $this->notificationService->updateNotification($notification, $data);
 
@@ -83,13 +91,27 @@ class NotificationController extends AbstractController
         return $this->json($notification, Response::HTTP_OK);
     }
 
-    #[Route('/{id}', methods: ['DELETE'])]
+    #[Route('/{id<\d+>}', methods: ['DELETE'])]
     public function delete(Notification $notification): JsonResponse
     {
         $this->notificationService->removeNotification($notification);
-
         $this->entityManager->flush();
 
-        return $this->json(['status' => 'deleted'], Response::HTTP_OK);
+        return new JsonResponse(null, Response::HTTP_NO_CONTENT);
+    }
+
+    private function safeJson(Request $request): array|JsonResponse
+    {
+        try {
+            $data = $request->toArray();
+        } catch (\Throwable) {
+            return $this->json(['error' => 'Invalid JSON body'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (!is_array($data) || $data === []) {
+            return $this->json(['error' => 'Empty request body'], Response::HTTP_BAD_REQUEST);
+        }
+
+        return $data;
     }
 }

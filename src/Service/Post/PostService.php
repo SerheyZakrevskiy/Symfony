@@ -18,24 +18,25 @@ use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Annotation\Groups;
 
 #[ORM\Entity(repositoryClass: PostRepository::class)]
-#[ORM\Table(name: 'post')]
+#[ORM\Table(name: '`post`')]
 #[ApiResource(
+    normalizationContext: ['groups' => ['post:read']],
+    denormalizationContext: ['groups' => ['post:write']],
     operations: [
-        new Get(normalizationContext: ['groups' => ['post:read']]),
-        new GetCollection(normalizationContext: ['groups' => ['post:read']]),
+        new Get(),
+        new GetCollection(),
         new ApiPost(
-            denormalizationContext: ['groups' => ['post:write']],
-            normalizationContext: ['groups' => ['post:read']]
+            security: "is_granted('IS_AUTHENTICATED_FULLY')"
         ),
         new Put(
-            denormalizationContext: ['groups' => ['post:write']],
-            normalizationContext: ['groups' => ['post:read']]
+            security: "is_granted('IS_AUTHENTICATED_FULLY')"
         ),
         new Patch(
-            denormalizationContext: ['groups' => ['post:write']],
-            normalizationContext: ['groups' => ['post:read']]
+            security: "is_granted('IS_AUTHENTICATED_FULLY')"
         ),
-        new Delete(),
+        new Delete(
+            security: "is_granted('IS_AUTHENTICATED_FULLY')"
+        ),
     ],
     paginationEnabled: true,
     paginationItemsPerPage: 10
@@ -43,7 +44,7 @@ use Symfony\Component\Serializer\Annotation\Groups;
 #[ApiFilter(SearchFilter::class, properties: [
     'title' => 'partial',
     'content' => 'partial',
-    'author' => 'exact',
+    'author.id' => 'exact',
 ])]
 #[ApiFilter(DateFilter::class, properties: ['createdAt'])]
 #[ApiFilter(OrderFilter::class, properties: ['id', 'createdAt'], arguments: ['orderParameterName' => 'order'])]

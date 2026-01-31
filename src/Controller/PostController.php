@@ -23,32 +23,37 @@ class PostController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly PostService $postService,
         private readonly RequestCheckerService $requestCheckerService,
-        private readonly UserRepository $userRepository
+        private readonly UserRepository $userRepository,
+        private readonly PostRepository $postRepository,
     ) {}
 
-    #[Route('/', methods: ['GET'])]
-    public function getCollection(Request $request, PostRepository $repo): JsonResponse
+    #[Route('', methods: ['GET'])]
+    public function getCollection(Request $request): JsonResponse
     {
         $q = $request->query->all();
 
-        $itemsPerPage = isset($q['itemsPerPage']) ? (int) $q['itemsPerPage'] : 10;
-        $page = isset($q['page']) ? (int) $q['page'] : 1;
+        $itemsPerPage = isset($q['itemsPerPage']) ? max(1, (int) $q['itemsPerPage']) : 10;
+        $page = isset($q['page']) ? max(1, (int) $q['page']) : 1;
 
-        $data = $repo->getAllPostsByFilter($q, $itemsPerPage, $page);
+        $data = $this->postRepository->getAllPostsByFilter($q, $itemsPerPage, $page);
 
         return new JsonResponse($data, Response::HTTP_OK);
     }
 
-    #[Route('/', methods: ['POST'])]
+    #[Route('', methods: ['POST'])]
     public function create(Request $request): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
+        $data = $this->safeJson($request);
+        if ($data instanceof JsonResponse) {
+            return $data;
+        }
 
         $this->requestCheckerService->check($data, self::REQUIRED_FIELDS_FOR_CREATE_POST);
 
-        $author = $this->userRepository->find($data['authorId']);
+        $authorId = (int) $data['authorId'];
+        $author = $this->userRepository->find($authorId);
         if (!$author) {
-            return new JsonResponse(['error' => 'Author not found'], Response::HTTP_NOT_FOUND);
+            return $this->json(['error' => 'Author not found'], Response::HTTP_NOT_FOUND);
         }
 
         $post = $this->postService->createPost(
@@ -58,21 +63,22 @@ class PostController extends AbstractController
         );
 
         $this->entityManager->flush();
-
         return $this->json($post, Response::HTTP_CREATED);
     }
 
-    #[Route('/{id}', methods: ['GET'])]
+    #[Route('/{id<\d+>}', methods: ['GET'])]
     public function show(Post $post): JsonResponse
     {
         return $this->json($post, Response::HTTP_OK);
     }
 
-    #[Route('/{id}', methods: ['PUT', 'PATCH'])]
+    #[Route('/{id<\d+>}', methods: ['PUT', 'PATCH'])]
     public function update(Request $request, Post $post): JsonResponse
     {
-        $data = json_decode($request->getContent(), true);
-
+        $data = $this->safeJson($request);
+        if ($data instanceof JsonResponse) {
+            return $data;
+        }
         $this->postService->updatePost($post, $data);
 
         $this->entityManager->flush();
@@ -80,13 +86,28 @@ class PostController extends AbstractController
         return $this->json($post, Response::HTTP_OK);
     }
 
-    #[Route('/{id}', methods: ['DELETE'])]
+    #[Route('/{id<\d+>}', methods: ['DELETE'])]
     public function delete(Post $post): JsonResponse
     {
         $this->postService->removePost($post);
-
         $this->entityManager->flush();
 
-        return $this->json(['status' => 'deleted'], Response::HTTP_OK);
+        return new JsonResponse(null, Response::HTTP_NO_CONTENT);
+    }
+
+
+    private function safeJson(Request $request): array|JsonResponse
+    {
+        try {
+            $data = $request->toArray();
+        } catch (\Throwable) {
+            return $this->json(['error' => 'Invalid JSON body'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if (!is_array($data) || $data === []) {
+            return $this->json(['error' => 'Empty request body'], Response::HTTP_BAD_REQUEST);
+        }
+
+        return $data;
     }
 }

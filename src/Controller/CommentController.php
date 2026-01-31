@@ -1,99 +1,143 @@
 <?php
 
-namespace App\Controller;
+namespace App\Entity;
 
-use App\Entity\Comment;
+use ApiPlatform\Doctrine\Orm\Filter\DateFilter;
+use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
+use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
+use ApiPlatform\Metadata\ApiFilter;
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post as ApiPost;
+use ApiPlatform\Metadata\Put;
 use App\Repository\CommentRepository;
-use App\Repository\PostRepository;
-use App\Repository\UserRepository;
-use App\Service\Comment\CommentService;
-use App\Service\RequestCheckerService;
-use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Attribute\Route;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Serializer\Annotation\Groups;
+use Symfony\Component\Validator\Constraints as Assert;
 
-#[Route('/api/comment')]
-class CommentController extends AbstractController
+#[ORM\Entity(repositoryClass: CommentRepository::class)]
+#[ORM\Table(name: '`comment`')]
+#[ApiResource(
+    normalizationContext: ['groups' => ['comment:read']],
+    denormalizationContext: ['groups' => ['comment:write']],
+    operations: [
+        new Get(),
+        new GetCollection(),
+        new ApiPost(
+            security: "is_granted('IS_AUTHENTICATED_FULLY')"
+        ),
+        new Put(
+            security: "is_granted('IS_AUTHENTICATED_FULLY')"
+        ),
+        new Patch(
+            security: "is_granted('IS_AUTHENTICATED_FULLY')"
+        ),
+        new Delete(
+            security: "is_granted('IS_AUTHENTICATED_FULLY')"
+        ),
+    ],
+    paginationEnabled: true,
+    paginationItemsPerPage: 10
+)]
+#[ApiFilter(SearchFilter::class, properties: [
+    'content' => 'partial',
+    'author.id' => 'exact',
+    'post.id' => 'exact',
+])]
+#[ApiFilter(DateFilter::class, properties: ['createdAt'])]
+#[ApiFilter(OrderFilter::class, properties: ['id', 'createdAt'], arguments: ['orderParameterName' => 'order'])]
+class Comment
 {
-    private const REQUIRED_FIELDS_FOR_CREATE_COMMENT = ['content', 'authorId', 'postId'];
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column]
+    #[Groups(['comment:read'])]
+    private ?int $id = null;
 
-    public function __construct(
-        private readonly EntityManagerInterface $entityManager,
-        private readonly CommentService $commentService,
-        private readonly RequestCheckerService $requestCheckerService,
-        private readonly UserRepository $userRepository,
-        private readonly PostRepository $postRepository
-    ) {}
+    #[ORM\Column(type: Types::TEXT)]
+    #[Assert\NotBlank(message: 'Comment content cannot be empty')]
+    #[Assert\Length(
+        min: 1,
+        max: 2000,
+        minMessage: 'Comment must contain at least {{ limit }} character',
+        maxMessage: 'Comment cannot be longer than {{ limit }} characters'
+    )]
+    #[Groups(['comment:read', 'comment:write'])]
+    private string $content = '';
 
-    #[Route('/', methods: ['GET'])]
-    public function getCollection(Request $request, CommentRepository $commentRepo): JsonResponse
+    #[ORM\Column]
+    #[Assert\NotNull]
+    #[Assert\Type(\DateTimeImmutable::class)]
+    #[Groups(['comment:read'])]
+    private \DateTimeImmutable $createdAt;
+
+    #[ORM\ManyToOne(inversedBy: 'comments')]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
+    #[Assert\NotNull]
+    #[Groups(['comment:read', 'comment:write'])]
+    private ?User $author = null;
+
+    #[ORM\ManyToOne(inversedBy: 'comments')]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
+    #[Assert\NotNull]
+    #[Groups(['comment:read', 'comment:write'])]
+    private ?Post $post = null;
+
+    public function __construct()
     {
-        $q = $request->query->all();
-
-        $itemsPerPage = isset($q['itemsPerPage']) ? (int) $q['itemsPerPage'] : 10;
-        $page = isset($q['page']) ? (int) $q['page'] : 1;
-
-        $data = $commentRepo->getAllCommentsByFilter($q, $itemsPerPage, $page);
-
-        return new JsonResponse($data, Response::HTTP_OK);
+        $this->createdAt = new \DateTimeImmutable();
     }
 
-    #[Route('/', methods: ['POST'])]
-    public function create(Request $request): JsonResponse
+    public function getId(): ?int
     {
-        $data = json_decode($request->getContent(), true);
-
-        $this->requestCheckerService->check($data, self::REQUIRED_FIELDS_FOR_CREATE_COMMENT);
-
-        $author = $this->userRepository->find($data['authorId']);
-        if (!$author) {
-            return new JsonResponse(['error' => 'Author not found'], Response::HTTP_NOT_FOUND);
-        }
-
-        $post = $this->postRepository->find($data['postId']);
-        if (!$post) {
-            return new JsonResponse(['error' => 'Post not found'], Response::HTTP_NOT_FOUND);
-        }
-
-        $comment = $this->commentService->createComment(
-            (string) $data['content'],
-            $author,
-            $post
-        );
-
-        $this->entityManager->flush();
-
-        return $this->json($comment, Response::HTTP_CREATED);
+        return $this->id;
     }
 
-    #[Route('/{id}', methods: ['GET'])]
-    public function show(Comment $comment): JsonResponse
+    public function getContent(): string
     {
-        return $this->json($comment, Response::HTTP_OK);
+        return $this->content;
     }
 
-    #[Route('/{id}', methods: ['PUT', 'PATCH'])]
-    public function update(Request $request, Comment $comment): JsonResponse
+    public function setContent(string $content): static
     {
-        $data = json_decode($request->getContent(), true);
-
-        $this->commentService->updateComment($comment, $data);
-
-        $this->entityManager->flush();
-
-        return $this->json($comment, Response::HTTP_OK);
+        $this->content = $content;
+        return $this;
     }
 
-    #[Route('/{id}', methods: ['DELETE'])]
-    public function delete(Comment $comment): JsonResponse
+    public function getCreatedAt(): \DateTimeImmutable
     {
-        $this->commentService->removeComment($comment);
+        return $this->createdAt;
+    }
 
-        $this->entityManager->flush();
+    public function setCreatedAt(\DateTimeImmutable $createdAt): static
+    {
+        $this->createdAt = $createdAt;
+        return $this;
+    }
 
-        return $this->json(['message' => 'Comment deleted'], Response::HTTP_OK);
+    public function getAuthor(): ?User
+    {
+        return $this->author;
+    }
+
+    public function setAuthor(?User $author): static
+    {
+        $this->author = $author;
+        return $this;
+    }
+
+    public function getPost(): ?Post
+    {
+        return $this->post;
+    }
+
+    public function setPost(?Post $post): static
+    {
+        $this->post = $post;
+        return $this;
     }
 }
