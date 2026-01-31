@@ -2,48 +2,112 @@
 
 namespace App\Entity;
 
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Patch;
+use ApiPlatform\Metadata\Post as ApiPost;
+use ApiPlatform\Metadata\Put;
 use App\Repository\PostRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Serializer\Annotation\Groups;
+use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: PostRepository::class)]
+#[ApiResource(
+    operations: [
+        new Get(normalizationContext: ['groups' => ['post:read']]),
+        new GetCollection(normalizationContext: ['groups' => ['post:read']]),
+        new ApiPost(
+            denormalizationContext: ['groups' => ['post:write']],
+            normalizationContext: ['groups' => ['post:read']]
+        ),
+        new Put(
+            denormalizationContext: ['groups' => ['post:write']],
+            normalizationContext: ['groups' => ['post:read']]
+        ),
+        new Patch(
+            denormalizationContext: ['groups' => ['post:write']],
+            normalizationContext: ['groups' => ['post:read']]
+        ),
+        new Delete(),
+    ],
+    paginationEnabled: true,
+    paginationItemsPerPage: 10
+)]
 class Post
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
+    #[Groups(['post:read'])]
     private ?int $id = null;
 
     #[ORM\Column(length: 255)]
-    private ?string $title = null;
+    #[Assert\NotBlank]
+    #[Assert\Length(
+        min: 1,
+        max: 255,
+        minMessage: 'Post title cannot be empty',
+        maxMessage: 'Post title cannot exceed {{ limit }} characters'
+    )]
+    #[Groups(['post:read', 'post:write'])]
+    private string $title = '';
 
-    #[ORM\Column(length: 255)]
-    private ?string $content = null;
+    #[ORM\Column(type: Types::TEXT)]
+    #[Assert\NotBlank]
+    #[Assert\Length(
+        min: 1,
+        max: 10000,
+        minMessage: 'Post content cannot be empty',
+        maxMessage: 'Post content cannot exceed {{ limit }} characters'
+    )]
+    #[Groups(['post:read', 'post:write'])]
+    private string $content = '';
 
     #[ORM\Column]
-    private ?\DateTimeImmutable $createdAt = null;
+    #[Assert\NotNull]
+    #[Assert\Type(\DateTimeImmutable::class)]
+    #[Groups(['post:read'])]
+    private \DateTimeImmutable $createdAt;
 
     #[ORM\ManyToOne(inversedBy: 'posts')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
+    #[Assert\NotNull]
+    #[Groups(['post:read', 'post:write'])]
     private ?User $author = null;
 
     /**
      * @var Collection<int, Comment>
      */
-    #[ORM\OneToMany(targetEntity: Comment::class, mappedBy: 'post')]
+    #[ORM\OneToMany(
+        targetEntity: Comment::class,
+        mappedBy: 'post',
+        orphanRemoval: true
+    )]
+    #[Groups(['post:read'])]
     private Collection $comments;
 
     /**
      * @var Collection<int, Like>
      */
-    #[ORM\OneToMany(targetEntity: Like::class, mappedBy: 'post')]
+    #[ORM\OneToMany(
+        targetEntity: Like::class,
+        mappedBy: 'post',
+        orphanRemoval: true
+    )]
+    #[Groups(['post:read'])]
     private Collection $likes;
 
     public function __construct()
     {
         $this->comments = new ArrayCollection();
         $this->likes = new ArrayCollection();
+        $this->createdAt = new \DateTimeImmutable();
     }
 
     public function getId(): ?int
@@ -51,7 +115,7 @@ class Post
         return $this->id;
     }
 
-    public function getTitle(): ?string
+    public function getTitle(): string
     {
         return $this->title;
     }
@@ -59,11 +123,10 @@ class Post
     public function setTitle(string $title): static
     {
         $this->title = $title;
-
         return $this;
     }
 
-    public function getContent(): ?string
+    public function getContent(): string
     {
         return $this->content;
     }
@@ -71,11 +134,10 @@ class Post
     public function setContent(string $content): static
     {
         $this->content = $content;
-
         return $this;
     }
 
-    public function getCreatedAt(): ?\DateTimeImmutable
+    public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
     }
@@ -83,7 +145,6 @@ class Post
     public function setCreatedAt(\DateTimeImmutable $createdAt): static
     {
         $this->createdAt = $createdAt;
-
         return $this;
     }
 
@@ -95,7 +156,6 @@ class Post
     public function setAuthor(?User $author): static
     {
         $this->author = $author;
-
         return $this;
     }
 
@@ -107,55 +167,11 @@ class Post
         return $this->comments;
     }
 
-    public function addComment(Comment $comment): static
-    {
-        if (!$this->comments->contains($comment)) {
-            $this->comments->add($comment);
-            $comment->setPost($this);
-        }
-
-        return $this;
-    }
-
-    public function removeComment(Comment $comment): static
-    {
-        if ($this->comments->removeElement($comment)) {
-
-            if ($comment->getPost() === $this) {
-                $comment->setPost(null);
-            }
-        }
-
-        return $this;
-    }
-
     /**
      * @return Collection<int, Like>
      */
     public function getLikes(): Collection
     {
         return $this->likes;
-    }
-
-    public function addLike(Like $like): static
-    {
-        if (!$this->likes->contains($like)) {
-            $this->likes->add($like);
-            $like->setPost($this);
-        }
-
-        return $this;
-    }
-
-    public function removeLike(Like $like): static
-    {
-        if ($this->likes->removeElement($like)) {
-
-            if ($like->getPost() === $this) {
-                $like->setPost(null);
-            }
-        }
-
-        return $this;
     }
 }
