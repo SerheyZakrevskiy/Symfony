@@ -18,6 +18,7 @@ use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
+use App\ApiPlatform\Action\AcceptFriendRequestAction;
 
 #[ORM\Entity(repositoryClass: FriendRequestRepository::class)]
 #[ORM\Table(name: 'friend_request')]
@@ -38,6 +39,15 @@ use Symfony\Component\Validator\Constraints as Assert;
             denormalizationContext: ['groups' => ['friend_request:write_update']],
             normalizationContext: ['groups' => ['friend_request:read']]
         ),
+        new ApiPost(
+        uriTemplate: '/friend_requests/{id}/accept',
+        controller: AcceptFriendRequestAction::class,
+        read: true,
+        write: false,
+        deserialize: false,
+        name: 'friend_request_accept',
+        security: "is_granted('IS_AUTHENTICATED_FULLY')"
+    ),
         new Delete(),
     ],
     paginationEnabled: true,

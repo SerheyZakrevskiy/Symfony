@@ -14,6 +14,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
+use App\ApiPlatform\Action\MarkNotificationReadAction;
 
 #[ORM\Entity(repositoryClass: NotificationRepository::class)]
 #[ApiResource(
@@ -32,6 +33,15 @@ use Symfony\Component\Validator\Constraints as Assert;
             denormalizationContext: ['groups' => ['notification:write']],
             normalizationContext: ['groups' => ['notification:read']]
         ),
+         new ApiPost(
+        uriTemplate: '/notifications/{id}/read',
+        controller: MarkNotificationReadAction::class,
+        read: true,
+        write: false,
+        deserialize: false,
+        name: 'notification_mark_read',
+        security: "is_granted('IS_AUTHENTICATED_FULLY')"
+    ),
         new Delete(),
     ],
     paginationEnabled: true,
